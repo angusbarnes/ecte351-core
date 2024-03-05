@@ -12,7 +12,7 @@ app.use(bodyParser.json());
 
 // In-memory user data (replace this with a database in a production environment)
 const users = [
-  { username: "astro", password: "admin", role: "admin" },
+  { username: "angusbrns@gmail.com", password: "admin", role: "admin" },
   { username: "astro-test", password: "test", role: "user" },
 ];
 
@@ -41,7 +41,7 @@ app.post("/auth/login", (req, res) => {
     { expiresIn: "1h" } // Token expires in 1 hour, adjust as needed
   );
 
-  res.json({ token });
+  res.json({ username,token });
 });
 
 app.post("/auth/register", (req, res) => {
