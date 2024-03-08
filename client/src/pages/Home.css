@@ -24,7 +24,7 @@
   color: white;
   background: var(--background);
   -webkit-animation: typing 4s steps(var(--steps)) forwards, caret 1s infinite;
-          animation: typing 4s steps(var(--steps)) forwards, caret 1s infinite;
+  animation: typing 4s steps(var(--steps)) forwards, caret 1s infinite;
 }
 
 @-webkit-keyframes typing {

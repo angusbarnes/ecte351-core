@@ -11,24 +11,38 @@ import { useAuth } from "./context/auth.js";
 import { DashboardPage } from "./pages/Dashboard.jsx";
 import { Button } from "./components/ui/button.jsx";
 import { RegisterPanel } from "./components/local/RegisterPanel.jsx";
+import { ThemeProvider } from "./context/theme.jsx";
 
 function routeGuard({ request }) {
   const { isAuth } = useAuth();
 
   if (isAuth() === false) {
     let params = new URLSearchParams();
-    params.set("from", new URL(request.url).pathname);
+    let from = new URL(request.url).pathname;
+    if (from === "/") {
+      return redirect("/login");
+    }
+    params.set("from", from);
     return redirect("/login?" + params.toString());
   }
   return null;
 }
 
-const {logout} = useAuth();
 const router = createBrowserRouter([
   {
     path: "/",
     element: <DashboardPage />,
     loader: routeGuard,
+    children: [
+      {
+        path: "/",
+        element: <p>Root Page</p>,
+      },
+      {
+        path: "/exports",
+        element: <p>exports</p>,
+      },
+    ],
   },
   {
     path: "/",
@@ -48,6 +62,8 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <ThemeProvider defaultTheme="light">
+      <RouterProvider router={router} />
+    </ThemeProvider>
   </React.StrictMode>
 );

@@ -1,5 +1,6 @@
 import { Button } from "../components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/auth";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RocketIcon, PersonIcon, BellIcon } from "@radix-ui/react-icons";
@@ -17,6 +18,25 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Outlet } from "react-router-dom";
 
 function DropdownMenuDemo() {
   return (
@@ -81,10 +101,20 @@ function DropdownMenuDemo() {
 }
 
 export function DashboardPage() {
-  const { logout } = useAuth();
+  const { logout, fetchWithAuth } = useAuth();
+  const [date, setDate] = useState(new Date());
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const data = await fetchWithAuth("http://localhost:3000/api/authtest", { method: "GET" });
+      console.log(data);
+    };
+    fetchData();
+  }, []);
+
   return (
     <>
-      <div className="flex flex-col h-screen dark">
+      <div className="flex flex-col h-screen">
         <nav className="w-full h-16 py-4 px-10 bg-primarydarktone flex justify-between text-primarydarktone-foreground">
           <div className="relative z-20 flex items-center text-lg font-medium">
             <svg
@@ -104,7 +134,7 @@ export function DashboardPage() {
             <p>Cloud Tennent</p>
           </div>
           <div>
-            <DropdownMenuDemo/>
+            <DropdownMenuDemo />
             <Button variant="ghost" size="icon">
               <BellIcon className="h-5 w-5" />
             </Button>
@@ -128,20 +158,15 @@ export function DashboardPage() {
             </div>
             <footer className="justify-self-end">
               <Separator className="my-4" />
-              <Button
-                variant="outline"
-                onClick={() =>
-                  logout(() => {
-                    window.location.reload();
-                  })
-                }
-              >
+              <Button variant="outline" onClick={() => logout()}>
                 Logout
               </Button>
             </footer>
           </div>
           <Separator orientation="vertical" className="h-full mr-4" />
-          <div id="main" className="bg-background p-4"></div>
+          <div id="main" className="bg-background p-4 w-full">
+            <Outlet></Outlet>
+          </div>
         </div>
       </div>
     </>

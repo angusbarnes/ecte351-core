@@ -25,13 +25,12 @@ const formSchema = z
     confirmation_password: z.string().min(8),
   })
   .superRefine(({ confirmation_password, password }, ctx) => {
-    
     if (confirmation_password !== password) {
       console.log("Is this firing");
       ctx.addIssue({
         code: "custom",
         message: "The passwords did not match",
-        path: ['confirmation_password']
+        path: ["confirmation_password"],
       });
     }
   });
@@ -161,9 +160,7 @@ export function RegisterPanel() {
     <div className=" w-96 m-auto">
       <div className="flex flex-col space-y-2 text-center mb-5">
         <h1 className="text-2xl font-semibold tracking-tight">Create Account</h1>
-        <p className="text-sm text-muted-foreground">
-          Please enter your details below to sign up.
-        </p>
+        <p className="text-sm text-muted-foreground">Please enter your details below to sign up.</p>
       </div>
       <ProfileForm />
     </div>

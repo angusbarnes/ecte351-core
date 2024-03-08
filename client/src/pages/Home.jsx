@@ -5,7 +5,6 @@ import { Link, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 export default function HomePage() {
-
   const Quotes = [
     "Our cutting-edge devices revolutionize connectivity by seamlessly integrating into industrial systems, driving data-driven solutions that elevate efficiency and connectivity to unprecedented levels.",
     "With a focus on real-time data insights, our industrial grade smart sensors pave the way for transformative remote monitoring solutions, empowering businesses to make informed decisions from anywhere in the world.",
@@ -14,8 +13,6 @@ export default function HomePage() {
     "Experience unparalleled connectivity and remote monitoring capabilities with our IoT devices, spearheading a data-driven revolution that propels industries towards heightened efficiency and innovation.",
   ];
 
-
-
   const getQuote = () => {
     const randomIndex = Math.floor(Math.random() * Quotes.length);
     return Quotes[randomIndex];
@@ -23,13 +20,13 @@ export default function HomePage() {
 
   const [quote, setQuote] = useState(getQuote());
 
-  useEffect(()=>{
+  useEffect(() => {
     const intervalId = setInterval(() => {
       setQuote(getQuote());
     }, 4200);
 
     return () => clearInterval(intervalId);
-  })
+  });
 
   return (
     <>
@@ -60,9 +57,7 @@ export default function HomePage() {
           Login
         </Link>
         <div className="relative hidden h-screen flex-col bg-muted p-10 text-white lg:flex dark:border-r">
-          <div className="absolute inset-0 bg-primary">
-
-          </div>
+          <div className="absolute inset-0 bg-primary"></div>
           <div className="relative z-20 flex items-center text-lg font-medium">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -86,7 +81,6 @@ export default function HomePage() {
         </div>
         <div className="lg:p-8">
           <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-
             <Outlet></Outlet>
 
             <p className="px-8 text-center text-sm text-muted-foreground">
