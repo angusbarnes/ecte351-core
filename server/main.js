@@ -4,8 +4,10 @@ const jwt = require("jsonwebtoken");
 const cors = require('cors'); // Import the cors middleware
 const fs = require("fs");
 const path = require("path");
+const  { RouteGuard } = require("./auth/RouteGuard")
 
 const useragent = require("express-useragent");
+const { UploadSingleFile } = require("./FileManager");
 
 const logFilePath = path.join(__dirname, "requestLogs.txt");
 
@@ -57,6 +59,7 @@ app.use(cors());
 // Middleware to parse JSON in the request body
 app.use(bodyParser.json());
 
+
 // In-memory user data (replace this with a database in a production environment)
 const users = [
   { username: "angusbrns@gmail.com", password: "admin", role: "admin" },
@@ -91,31 +94,15 @@ app.post("/auth/login", (req, res) => {
   res.json({ username,token });
 });
 
-const authenticateToken = (req, res, next) => {
-  const tokenHeader = req.headers.authorization;
+// Handle file upload route
+app.post("/upload", [RouteGuard, UploadSingleFile], (req, res) => {
+  // Access the uploaded file details through req.file
+  const uploadedFile = req.file;
+  console.log(uploadedFile);
 
-  console.log(req.headers)
-
-  if (!tokenHeader) {
-    return res.status(401).json({ error: 'Unauthorized - Missing token' });
-  }
-
-  const [bearer, token] = tokenHeader.split(' ');
-
-  if (bearer !== 'Bearer' || !token) {
-    return res.status(401).json({ error: 'Unauthorized - Invalid token format' });
-  }
-
-  jwt.verify(token, jwtSecretKey, (err, user) => {
-    if (err) {
-      console.log("Invalid JWT?");
-      return res.status(403).json({ error: 'Forbidden - Invalid token' });
-    }
-    
-    req.user = user; // Attach the user information to the request object
-    next();
-  });
-};
+  // You can send a response back to the client
+  res.send("File uploaded successfully!");
+});
 
 app.post("/auth/register", (req, res) => {
   const { username, password, role } = req.body;
@@ -144,8 +131,14 @@ app.post("/auth/register", (req, res) => {
   res.json({ token });
 });
 
-app.get('/api/authtest', authenticateToken, (req, res) => {
+app.get('/api/authtest', RouteGuard, (req, res) => {
   res.json({"message": "Success! You hit a protected route"})
+});
+
+app.use("/", express.static(path.join(__dirname, "../client/dist")));
+// Define route for your React app
+app.get("/*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../client/dist/index.html"));
 });
 
 // Start the server

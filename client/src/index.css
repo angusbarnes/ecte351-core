@@ -105,10 +105,6 @@
   }
 }
 
-a {
-  @apply text-blue-700 underline-offset-4 hover:underline cursor-pointer;
-}
-
 @layer base {
   * {
     @apply border-border;

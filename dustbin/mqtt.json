@@ -1,0 +1,17 @@
+{
+    "platform": "default",
+    "ports": [
+        {
+            "port": 0,
+            "current": 255
+        },
+        {
+            "port": 1,
+            "current": 13
+        },
+        {
+            "port": 2,
+            "current": 134
+        }
+    ]
+}
