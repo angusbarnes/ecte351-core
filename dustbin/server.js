@@ -11,10 +11,8 @@ server.on('error', (err) => {
 
 server.on('message', (msg, rinfo) => {
     const byteValue1 = msg.readUInt8(); // Convert the received buffer to an integer
-    const byteValue2 = msg.readUInt8();
-    const byteValue3 = msg.readUInt8();
-    const byteValue4 = msg.readUInt8();
-    console.log('Received byte value:', [byteValue1, byteValue2, byteValue3,byteValue4]);
+
+    console.log('Received byte value:', byteValue1/255 * 35);
 });
 
 server.on('listening', () => {

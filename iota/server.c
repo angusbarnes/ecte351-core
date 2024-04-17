@@ -1,0 +1,210 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/time.h>
+#include <sys/errno.h>
+#include <pthread.h>
+#include "include/sqlite3.h"
+
+#define MAX_CLIENTS 100
+#define BUFFER_SIZE 1024
+#define CONNECTION_TIMEOUT 100 // Timeout in ms
+#define MAX_PENDING_QUEUE_SIZE 10
+#define TCP_STATELESS 0
+#define TCP_PERSISTENT 1
+#define NUM_WORKERS 4
+
+#define MARK_AS_CLOSED(x) x->status = SHOULD_CLOSE
+
+#define CF_WANTS_PERSISTENCE = 01
+#define CF_WANTS_AUTHORITY
+
+typedef enum {
+    IS_FREE = -1,
+    IS_CONNECTED = 0,
+    IS_ALIVE = 1,
+    SHOULD_CLOSE = 2
+} ConnectionStatus;
+
+typedef struct {
+    int client_fd;
+    struct timeval last_activity_time;
+    char persistent;
+    ConnectionStatus status;
+} Client;
+
+// fcntl is file control sys call
+// F_SETFL and F_GETFL are File Set Flags and File Get Flags respectively
+// O_NONBLOCK sets these files to nonblocking mode. (Use it or lose it)
+void set_nonblocking(int socket_fd) {
+    int flags = fcntl(socket_fd, F_GETFL, 0);
+    fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+void handle_persistent_connection(Client* client) {
+
+    if (client->status == IS_FREE) return; // We dont need to handle open connections
+
+    char buffer[BUFFER_SIZE];
+    int bytes_read = read(client->client_fd, buffer, BUFFER_SIZE);
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0'; // Null-terminate the string
+        printf("Received from client %d: %s\n", client->client_fd, buffer);
+        // Example: Echo back the received data
+        write(client->client_fd, buffer, bytes_read);
+        gettimeofday(&client->last_activity_time, NULL); // Update last activity time
+    } else if (bytes_read == 0) {
+        // THIS IS SUPPOSED TO REPRESENT A CLIENT DC
+        printf("Client %d has closed the connection\n", client->client_fd);
+        MARK_AS_CLOSED(client);
+    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+
+        struct timeval current_time;
+        gettimeofday(&current_time, NULL);
+
+        // Calculate the elapsed time in milliseconds
+        long elapsed_time = (current_time.tv_sec - client->last_activity_time.tv_sec) * 1000 +
+            (current_time.tv_usec - client->last_activity_time.tv_usec) / 1000;
+
+        if (elapsed_time > CONNECTION_TIMEOUT) { // Check if elapsed time exceeds 100 milliseconds
+            MARK_AS_CLOSED(client);
+            printf("Client %d has timed out. Timeout: %ld\n", client->client_fd, elapsed_time);
+        }
+    } else {
+        printf("If we end up here only a supreme power can save you. I have no fucking clue what case would cause this to be true\n");
+    }
+}
+
+void handle_stateless_connection(Client* client, int* num_clients) {
+    // Similar logic as handle_persistent_connection, but with different handling for stateless connections
+}
+
+int main() {
+
+    pthread_t workers[NUM_WORKERS];
+
+    for(int i = 0; i < NUM_WORKERS; i++) {
+        
+    }
+
+
+    int server_socket_fd, client_socket_fd;
+    struct sockaddr_in server_addr, client_addr = {0};
+    socklen_t client_addr_len;
+    Client clients[MAX_CLIENTS];
+    int num_clients = 0;
+
+    // Create server socket
+    // IPv4, TCP (full duplex), IP
+    server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket_fd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set server socket options
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(6969);
+
+    // Bind server socket
+    if (bind(server_socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set server socket to listen
+    if (listen(server_socket_fd, MAX_PENDING_QUEUE_SIZE) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize client structures
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        clients[i].client_fd = -1;
+        clients[i].persistent = TCP_STATELESS;
+        clients[i].status = IS_FREE;
+    }
+
+    // Set server socket to non-blocking
+    set_nonblocking(server_socket_fd);
+
+    // THERE IS A BUG IN THE WAY CLIENT CONNECTIONS ARE CLOSED
+    // THE TOTAL CONNECTION COUNT IS SIMPLY DECREMENTED
+    // THIS IS BAD BECAUSE NEW CONNECTIONS USE THE TOTAL CONNECTION COUNTER AS
+    // AN INDEX INTO THE CLIENT ARRAY. IF THE 0TH CLIENT DC'S THEN INSTEAD OF A NEW CONNECTION
+    // BEING PUT INTO INDEX 0 IT WILL GO INTO THE END OF THE ARRAY, OVERWRITING AN EXISTING CONNECTION
+    while (1) {
+        // Accept new connections
+        client_addr_len = sizeof(client_addr);
+        client_socket_fd = accept(server_socket_fd, (struct sockaddr*)&client_addr, &client_addr_len);
+
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+
+        if (client_socket_fd != -1) {
+            printf("Connection request from origin: %s\n", client_ip);
+        }
+        
+        if (client_socket_fd > 0) {
+            if (num_clients < MAX_CLIENTS) {
+
+                // Do a search for the first available index
+                int freeIndex = -1;
+                for (int i = 0; i < MAX_CLIENTS; i++) {
+                    // Check both conditions for extra certainty
+                    if (clients[i].status == IS_FREE && clients[i].client_fd == -1) {
+                        freeIndex = i;
+                        break;
+                    }
+                }
+                // Add new client to the list
+                clients[freeIndex].client_fd = client_socket_fd;
+
+                // We should start as a persistent connection
+                // 
+                clients[freeIndex].persistent = TCP_PERSISTENT;
+                clients[freeIndex].status = IS_CONNECTED;
+                gettimeofday(&clients[freeIndex].last_activity_time, NULL);
+                set_nonblocking(client_socket_fd);
+                num_clients++;
+            } else {
+                printf("Maximum clients reached, connection rejected.\n");
+                close(client_socket_fd);
+            }
+        }
+
+        // Handle client events
+        for (int i = 0; i < num_clients; i++) {
+            Client* client = &clients[i];
+            if (client->client_fd != -1) {
+                if (clients[i].persistent) {
+                    handle_persistent_connection(&clients[i]);
+                } else {
+                    handle_stateless_connection(&clients[i], &num_clients);
+                }
+            }
+
+            if (client->status == SHOULD_CLOSE) {
+                // Client closed the connection
+                // THIS COULD BE ITS OWN FUNCTION, SHOULD TECHNICALLY CHECK FOR SUCESS BEFORE FREEING
+                close(client->client_fd);
+                client->status = IS_FREE;
+                client->client_fd = -1; // Mark as closed
+                num_clients--;
+            }
+        }
+
+        // Check for idle persistent connections and close if necessary
+    }
+
+    // Close server socket
+    close(server_socket_fd);
+
+    return 0;
+}
