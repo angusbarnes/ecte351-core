@@ -9,6 +9,7 @@
 #include <sys/errno.h>
 #include <pthread.h>
 #include "include/sqlite3.h"
+#include "include/config.h"
 
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
@@ -85,6 +86,10 @@ void handle_stateless_connection(Client* client, int* num_clients) {
 
 int main() {
 
+    Config cfg = read_config_from_file("config.txt");
+
+    printf("Max clients %d\n", cfg.max_clients);
+
     pthread_t workers[NUM_WORKERS];
 
     for(int i = 0; i < NUM_WORKERS; i++) {
@@ -118,11 +123,15 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    printf("Server was bound to socket successfully\n");
+
     // Set server socket to listen
     if (listen(server_socket_fd, MAX_PENDING_QUEUE_SIZE) == -1) {
         perror("Listen failed");
         exit(EXIT_FAILURE);
     }
+
+    printf("Server now listening on port: %d\n", 6969);
 
     // Initialize client structures
     for (int i = 0; i < MAX_CLIENTS; i++) {

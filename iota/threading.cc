@@ -7,6 +7,10 @@
 #define NUM_THREADS 4
 #define TASK_QUEUE_SIZE 10
 
+// We need thread safe db access for writes
+// We need thread safe queue structures for data batching
+// Thread safe queue for task allocation
+
 
 // THIS IS CURRENTLY A WHOLE ASS MESS.
 // WE NEED TO COMBINE THE TWO GENERATED ANSWERS SUCH THAT WE RESPECT SERVER

@@ -9,4 +9,4 @@ if exist %SQLITE_OBJ% (
 )
 
 echo Building server.c...
-gcc server.c %SQLITE_OBJ% -o server.exe
+gcc *.c %SQLITE_OBJ% -o server.exe

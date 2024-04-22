@@ -1,0 +1,9 @@
+// Max amount of simultaneous connections allowed
+MAX_CLIENTS=50
+// Max amount of connections waiting for acceptance
+MAX_PENDING_QUEUE_SIZE=10
+
+// Performance settings
+BUFFER_SIZE=512
+CONNECTION_TIMEOUT=50
+NUM_THREADS=4

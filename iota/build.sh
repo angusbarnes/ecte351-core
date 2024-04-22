@@ -10,4 +10,4 @@ else
 fi
 
 echo "Building server.c..."
-gcc server.c "$SQLITE_OBJ" -o server
+gcc *.c "$SQLITE_OBJ" -o server
