@@ -6,12 +6,12 @@
 #define MAX_LINE_LENGTH 100
 
 Config DEFAULT_SERVER_CONFIG = {
-    100, //Max Clients
-    1024, //Buffer Size
-    100, //Connection Timeout
-    10, // Max pending connection
-    "0.0.0.0", //Ip (DOES NOT GET USED)
-    4 //Thread count
+    .max_clients = 100, //Max Clients
+    .buffer_size = 1204, //Buffer Size
+    .connection_timeout = 100, //Connection Timeout
+    .max_pending_queue_size = 10, // Max pending connection
+    .ip_address = "0.0.0.0", //Ip (DOES NOT GET USED)
+    .num_threads = 4 //Thread count
 };
 
 Config read_config_from_file(const char *filename) {
