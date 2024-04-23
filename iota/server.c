@@ -1,15 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <sys/time.h>
 #include <sys/errno.h>
-#include <pthread.h>
-#include "include/sqlite3.h"
-#include "include/config.h"
+#include <signal.h>
+#include "lib/include.h"
 
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
@@ -38,6 +34,10 @@ typedef struct {
     ConnectionStatus status;
 } Client;
 
+ThreadPool pool;
+TaskQueue task_queue;
+Config cfg;
+
 // fcntl is file control sys call
 // F_SETFL and F_GETFL are File Set Flags and File Get Flags respectively
 // O_NONBLOCK sets these files to nonblocking mode. (Use it or lose it)
@@ -55,6 +55,11 @@ void handle_persistent_connection(Client* client) {
     if (bytes_read > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate the string
         printf("Received from client %d: %s\n", client->client_fd, buffer);
+        if(strcmp(buffer, "task") == 0) {
+            Task* task = get_sample_task();
+
+            enqueueTask(&task_queue, task);
+        }
         // Example: Echo back the received data
         write(client->client_fd, buffer, bytes_read);
         gettimeofday(&client->last_activity_time, NULL); // Update last activity time
@@ -71,7 +76,7 @@ void handle_persistent_connection(Client* client) {
         long elapsed_time = (current_time.tv_sec - client->last_activity_time.tv_sec) * 1000 +
             (current_time.tv_usec - client->last_activity_time.tv_usec) / 1000;
 
-        if (elapsed_time > CONNECTION_TIMEOUT) { // Check if elapsed time exceeds 100 milliseconds
+        if (elapsed_time > cfg.connection_timeout) { // Check if elapsed time exceeds 100 milliseconds
             MARK_AS_CLOSED(client);
             printf("Client %d has timed out. Timeout: %ld\n", client->client_fd, elapsed_time);
         }
@@ -84,18 +89,23 @@ void handle_stateless_connection(Client* client, int* num_clients) {
     // Similar logic as handle_persistent_connection, but with different handling for stateless connections
 }
 
+char g_running = 1;
+
+// Signal handler function for Ctrl+C (SIGINT)
+void sigintHandler(int signal) {
+    g_running = 0;
+    printf("\nServer shutting down gracefully...\n");
+    // Perform cleanup actions here if needed
+}
+
 int main() {
+    setLogLevel(LOG_DEBUG);
+    signal(SIGINT, sigintHandler);
 
-    Config cfg = read_config_from_file("config.txt");
+    cfg = read_config_from_file("config.txt");
 
-    printf("Max clients %d\n", cfg.max_clients);
-
-    pthread_t workers[NUM_WORKERS];
-
-    for(int i = 0; i < NUM_WORKERS; i++) {
-        
-    }
-
+    init_task_queue(&task_queue, 50);
+    initialize_thread_pool(&pool, cfg.num_threads, startWorkerThread, &task_queue);
 
     int server_socket_fd, client_socket_fd;
     struct sockaddr_in server_addr, client_addr = {0};
@@ -148,7 +158,7 @@ int main() {
     // THIS IS BAD BECAUSE NEW CONNECTIONS USE THE TOTAL CONNECTION COUNTER AS
     // AN INDEX INTO THE CLIENT ARRAY. IF THE 0TH CLIENT DC'S THEN INSTEAD OF A NEW CONNECTION
     // BEING PUT INTO INDEX 0 IT WILL GO INTO THE END OF THE ARRAY, OVERWRITING AN EXISTING CONNECTION
-    while (1) {
+    while (g_running) {
         // Accept new connections
         client_addr_len = sizeof(client_addr);
         client_socket_fd = accept(server_socket_fd, (struct sockaddr*)&client_addr, &client_addr_len);
@@ -214,6 +224,22 @@ int main() {
 
     // Close server socket
     close(server_socket_fd);
+    logMessage(LOG_INFO, "Socket server has been closed");
 
+    shutdown_task_queue(&task_queue);
+
+    for(int i = 0; i < pool.size; i++) {
+        logMessage(LOG_DEBUG, "Attempting to join thread: %d", i);
+        pthread_t thread = pool.threads[i];
+        pthread_join(thread, NULL); 
+    }  
+
+
+    release_thread_pool(&pool);
+
+    release_task_queue(&task_queue);
+
+    printf("Press any key to continue... ");
+    getchar();
     return 0;
 }

@@ -12,7 +12,7 @@ try:
 
         timeout = 0.010 # 10 ms
         while(True): 
-            sock.send(b'TEST')
+            sock.send(b'task')
             data = sock.recv(1024)
 
             print(data)
