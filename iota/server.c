@@ -8,12 +8,10 @@
 #include "lib/include.h"
 
 #define MAX_CLIENTS 100
-#define BUFFER_SIZE 1024
 #define CONNECTION_TIMEOUT 100 // Timeout in ms
 #define MAX_PENDING_QUEUE_SIZE 10
 #define TCP_STATELESS 0
 #define TCP_PERSISTENT 1
-#define NUM_WORKERS 4
 
 #define MARK_AS_CLOSED(x) x->status = SHOULD_CLOSE
 
@@ -34,6 +32,38 @@ typedef struct {
     ConnectionStatus status;
 } Client;
 
+typedef uint8_t MACAdress[6];
+typedef uint8_t SimpleDataFrame[16];
+
+#define MSG_FIXED_DATA_FRAME 255
+#define MSG_SIMPLE_DATA_FRAME 100
+#define MSG_VARIABLE_DATA_FRAME 70
+#define FLAG_IOTA_CLIENT 0b00000001
+
+union iota_metadata {
+    uint16_t iota_metadata;
+    struct iota_meta {
+        uint8_t message_type;
+        uint8_t flags;
+    };
+};
+
+// Each mesage should come with an address
+// This is agreed upon during the handshake 
+// The simple data frame can be used to fit a message entirely in the header. If the 
+// FLAG_SKIP_SDF is set in the metadata flags, then this field should be ignored and the
+// rest of the message data can be assumed to be the bodys. This is only necessary for total
+// efficiency
+
+// Any text transmitted should be null terminated
+typedef struct iota_message_header {
+    union iota_metadata meta;
+    MACAdress address;
+    SimpleDataFrame frame;
+} IotaHeader;
+
+// could have a task for performing a TLS handshake
+
 ThreadPool pool;
 TaskQueue task_queue;
 Config cfg;
@@ -50,11 +80,17 @@ void handle_persistent_connection(Client* client) {
 
     if (client->status == IS_FREE) return; // We dont need to handle open connections
 
-    char buffer[BUFFER_SIZE];
-    int bytes_read = read(client->client_fd, buffer, BUFFER_SIZE);
+    char buffer[cfg.buffer_size];
+    memset(buffer, '\0', sizeof(buffer));
+    int bytes_read = read(client->client_fd, buffer, sizeof(IotaHeader));
+
+    IotaHeader* header;
+
+    header = (IotaHeader*)buffer;
+
     if (bytes_read > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate the string
-        printf("Received from client %d: %s\n", client->client_fd, buffer);
+        printf("Received message type: %d from client %d (%02X:%02X:%02X:%02X:%02X:%02X): %s\n", header->meta.iota_metadata, client->client_fd,header->address[5], header->address[4], header->address[3], header->address[2], header->address[1], header->address[0], header->frame);
         if(strcmp(buffer, "task") == 0) {
             Task* task = get_sample_task();
 
@@ -81,7 +117,14 @@ void handle_persistent_connection(Client* client) {
             printf("Client %d has timed out. Timeout: %ld\n", client->client_fd, elapsed_time);
         }
     } else {
-        printf("If we end up here only a supreme power can save you. I have no fucking clue what case would cause this to be true\n");
+
+        // Can be no route to host or an early close from the socket
+        if (errno == ECONNABORTED) {
+            MARK_AS_CLOSED(client); // Just kill the client, we dont deal with time wasters
+            logMessage(LOG_INFO, "Client %d refused to listen or aborted.", client->client_fd);
+            return;
+        }
+        printf("Hey we discovered a new magical edge case. Good luck debugging this for the next 8 hours. Errno: %d\n", errno);
     }
 }
 
