@@ -14,7 +14,6 @@
 -> We now have two clients connected and the old one will be aborted at some point
 -> Should be able to handle this gracefully with a reshake
 
-
 1. accept connections
 2. receive data into a buffer
 3. async process and chunk messages on main thread
@@ -24,6 +23,9 @@
     --> Data requests get logged into tasks
 
 --> Server commands can be executed on main thread
+
+HOW DO WE HANDLE A BUFFER OVERFLOW? Do we just kill the connection?
+Seems unreasonable. Do we simply ignore messages? Could misout on vital state.
 
 WRITING TO A CLIENT NEEDS TO BE HANDLED IN A THREAD SAFE MANNER
 ONLY THE MAIN THREAD READS FROM THE CLIENTS */
@@ -53,6 +55,7 @@ typedef struct {
     ConnectionStatus status;
     long timeout;
     unsigned char* buffer; // We need to write an init for this client object
+    size_t buffer_length; // Keep track of how much of the buffer we have handled
 } Client;
 
 void init_client(Client* client, long timeout, size_t buffer_size) {
@@ -61,7 +64,7 @@ void init_client(Client* client, long timeout, size_t buffer_size) {
     client->status = IS_FREE;
     client->timeout = timeout;
     client->buffer = (unsigned char*)malloc(buffer_size * sizeof(unsigned char));
-
+    client->buffer_length = 0;
 }
 
 void release_client(Client* client) {
@@ -105,9 +108,7 @@ struct iota_header_frame {
 
 // could have a task for performing a TLS handshake
 
-ThreadPool pool;
-TaskQueue task_queue;
-Config cfg;
+
 
 // fcntl is file control sys call
 // F_SETFL and F_GETFL are File Set Flags and File Get Flags respectively
@@ -117,9 +118,9 @@ void set_nonblocking(int socket_fd) {
     fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int listener_fds[20] = { 0 };
-int listener_count = 0;
 
+// This is basic checksum implementation. This allows us to verify that there is no message corruption
+// and that we do have a valid packet. We need python and nodejs implementations of this
 uint8_t calculateHeaderChecksum(const struct iota_message_header* header) {
     uint8_t checksum = 0;
     const uint8_t* ptr = (const uint8_t*)header;
@@ -134,11 +135,19 @@ uint8_t calculateHeaderChecksum(const struct iota_message_header* header) {
 
 /// @brief Attempts to consume the buffer waiting on the socket into a complete message.
 ///        It is a naive implementation that only processes 1 message at a time.
+///        This shouln't be called if there isnt at least 1 headers worth of data waiting on the buffer
 /// @param buffer 
 /// @param buffer_size 
 void processMessage(unsigned char* buffer, size_t buffer_size) {
 
 }
+
+char g_running = 1;
+int listener_fds[20] = { 0 };
+int listener_count = 0;
+ThreadPool pool;
+TaskQueue task_queue;
+Config cfg;
 
 void handle_persistent_connection(Client* client) {
 
@@ -206,8 +215,6 @@ void handle_persistent_connection(Client* client) {
 void handle_stateless_connection(Client* client, int* num_clients) {
     // Similar logic as handle_persistent_connection, but with different handling for stateless connections
 }
-
-char g_running = 1;
 
 // Signal handler function for Ctrl+C (SIGINT)
 void sigintHandler(int signal) {
