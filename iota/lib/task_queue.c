@@ -96,9 +96,9 @@ void* startWorkerThread(void* arg) {
 }
 
 void _tq_sample_task_func(void* args) {
-    printf("%d: Starting sample task\n", pthread_self());
+    printf("%ld: Starting sample task\n", pthread_self());
     sleep(1);
-    printf("%d: Sample task ended\n", pthread_self());
+    printf("%ld: Sample task ended\n", pthread_self());
 }
 
 Task* get_sample_task() {

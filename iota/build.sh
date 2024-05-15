@@ -7,8 +7,8 @@ if [ -f "$SQLITE_OBJ" ]; then
     echo "SQLite object file already exists."
 else
     echo "Compiling SQLite object file..."
-    gcc -c lib/sqLite/sqlite3.c -o "$SQLITE_OBJ"
+    gcc -c lib/sqlite/sqlite3.c -o "$SQLITE_OBJ"
 fi
 
 echo "Building server.c..."
-gcc *.c lib/*.c "$SQLITE_OBJ"-o server
+gcc *.c ./lib/*.c "$SQLITE_OBJ" -o server

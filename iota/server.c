@@ -81,7 +81,7 @@ union iota_metadata {
     struct iota_meta {
         uint8_t message_type;
         uint8_t flags;
-    };
+    } iota_meta;
 };
 
 // Each mesage should come with an address
@@ -99,7 +99,7 @@ typedef struct iota_message_header {
 } IotaHeader;
 
 struct iota_header_frame {
-    struct iota_message_header;
+    struct iota_message_header header_frame;
     uint8_t checksum;
 };
 
