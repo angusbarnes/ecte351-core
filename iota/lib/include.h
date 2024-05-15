@@ -3,7 +3,7 @@
 #include "include/thread_pool.h"
 #include "include/task_queue.h"
 #include "include/logging.h"
-
+#include "include/metrics.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>

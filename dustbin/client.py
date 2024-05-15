@@ -2,6 +2,9 @@ import socket
 import random
 import time
 
+
+
+
 UDP_IP = "127.0.0.1"  # IP address of the Node.js server
 UDP_PORT = 6969       # UDP port number
 

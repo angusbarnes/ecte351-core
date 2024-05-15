@@ -47,12 +47,12 @@ void enqueueTask(TaskQueue* queue, Task* task) {
 Task* dequeueTask(TaskQueue* queue) {
     pthread_mutex_lock(&queue->mutex);
     while (queue->size == 0 && queue->status != THREAD_SHUTDOWN) {
-        logMessage(LOG_DEBUG, "Checking for new queue data");
+        logMessageThreadSafe(LOG_DEBUG, "Checking for new queue data");
         pthread_cond_wait(&queue->cond, &queue->mutex); // Wait for a task to be available
     }
 
     if (queue->size == 0 && queue->status == THREAD_SHUTDOWN) {
-        logMessage(LOG_DEBUG, "Task queue empty, ready to shutdown thread");
+        logMessageThreadSafe(LOG_DEBUG, "Task queue empty, ready to shutdown thread");
         pthread_mutex_unlock(&queue->mutex);
         return NULL;
     }
@@ -92,7 +92,6 @@ void* startWorkerThread(void* arg) {
         release_task(task); // Destroy task and data now we have finished it
     }
 
-    logMessage(LOG_DEBUG, "Thread exiting now");
     pthread_exit(NULL);
 }
 

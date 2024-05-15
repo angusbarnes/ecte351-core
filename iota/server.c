@@ -6,6 +6,27 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include "lib/include.h"
+#include <limits.h>
+
+/* Need to be able to disconnect clients via some kind of client ID
+-> What happens if an endpoint silent quits without closing the connection
+-> the client then rejoins
+-> We now have two clients connected and the old one will be aborted at some point
+-> Should be able to handle this gracefully with a reshake
+
+
+1. accept connections
+2. receive data into a buffer
+3. async process and chunk messages on main thread
+4. Classify and distibute the message
+--> Message Broker Thread (Await on dequeue)
+    --> Broker thread batches data logs into a BATCH_SIZE and then creates a task
+    --> Data requests get logged into tasks
+
+--> Server commands can be executed on main thread
+
+WRITING TO A CLIENT NEEDS TO BE HANDLED IN A THREAD SAFE MANNER
+ONLY THE MAIN THREAD READS FROM THE CLIENTS */
 
 #define MAX_CLIENTS 100
 #define CONNECTION_TIMEOUT 100 // Timeout in ms
@@ -30,7 +51,22 @@ typedef struct {
     struct timeval last_activity_time;
     char persistent;
     ConnectionStatus status;
+    long timeout;
+    unsigned char* buffer; // We need to write an init for this client object
 } Client;
+
+void init_client(Client* client, long timeout, size_t buffer_size) {
+    client->client_fd = -1;
+    client->persistent = TCP_STATELESS;
+    client->status = IS_FREE;
+    client->timeout = timeout;
+    client->buffer = (unsigned char*)malloc(buffer_size * sizeof(unsigned char));
+
+}
+
+void release_client(Client* client) {
+    free(client->buffer);
+}
 
 typedef uint8_t MACAdress[6];
 typedef uint8_t SimpleDataFrame[16];
@@ -62,6 +98,11 @@ typedef struct iota_message_header {
     SimpleDataFrame frame;
 } IotaHeader;
 
+struct iota_header_frame {
+    struct iota_message_header;
+    uint8_t checksum;
+};
+
 // could have a task for performing a TLS handshake
 
 ThreadPool pool;
@@ -74,6 +115,29 @@ Config cfg;
 void set_nonblocking(int socket_fd) {
     int flags = fcntl(socket_fd, F_GETFL, 0);
     fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+int listener_fds[20] = { 0 };
+int listener_count = 0;
+
+uint8_t calculateHeaderChecksum(const struct iota_message_header* header) {
+    uint8_t checksum = 0;
+    const uint8_t* ptr = (const uint8_t*)header;
+    size_t size = sizeof(struct iota_message_header);
+
+    for (size_t i = 0; i < size; i++) {
+        checksum += *(ptr++);
+    }
+
+    return checksum;
+}
+
+/// @brief Attempts to consume the buffer waiting on the socket into a complete message.
+///        It is a naive implementation that only processes 1 message at a time.
+/// @param buffer 
+/// @param buffer_size 
+void processMessage(unsigned char* buffer, size_t buffer_size) {
+
 }
 
 void handle_persistent_connection(Client* client) {
@@ -89,15 +153,26 @@ void handle_persistent_connection(Client* client) {
     header = (IotaHeader*)buffer;
 
     if (bytes_read > 0) {
+        metrics_tick();
         buffer[bytes_read] = '\0'; // Null-terminate the string
-        printf("Received message type: %d from client %d (%02X:%02X:%02X:%02X:%02X:%02X): %s\n", header->meta.iota_metadata, client->client_fd,header->address[5], header->address[4], header->address[3], header->address[2], header->address[1], header->address[0], header->frame);
-        if(strcmp(buffer, "task") == 0) {
+        logMessage(LOG_DEBUG, "Received message type: %d from client %d (%02X:%02X:%02X:%02X:%02X:%02X): %s\n", header->meta.iota_metadata, client->client_fd, header->address[5], header->address[4], header->address[3], header->address[2], header->address[1], header->address[0], header->frame);
+        if (strcmp(header->frame, "task") == 0) {
             Task* task = get_sample_task();
 
             enqueueTask(&task_queue, task);
+        } else if (strcmp(header->frame, "listen") == 0) {
+            listener_fds[listener_count] = client->client_fd;
+            client->timeout = LONG_MAX;
+            listener_count++;
+            logMessage(LOG_INFO, "New listener registered");
         }
         // Example: Echo back the received data
-        write(client->client_fd, buffer, bytes_read);
+        write(client->client_fd, "Request was recieved by server", 30);
+
+        for (int i = 0; i < listener_count; i++) {
+            write(listener_fds[i], header->frame, strlen(header->frame));
+            logMessage(LOG_DEBUG, "Echo: %s, %d", header->frame, strlen(header->frame));
+        }
         gettimeofday(&client->last_activity_time, NULL); // Update last activity time
     } else if (bytes_read == 0) {
         // THIS IS SUPPOSED TO REPRESENT A CLIENT DC
@@ -112,7 +187,7 @@ void handle_persistent_connection(Client* client) {
         long elapsed_time = (current_time.tv_sec - client->last_activity_time.tv_sec) * 1000 +
             (current_time.tv_usec - client->last_activity_time.tv_usec) / 1000;
 
-        if (elapsed_time > cfg.connection_timeout) { // Check if elapsed time exceeds 100 milliseconds
+        if (elapsed_time > client->timeout) { // Check if elapsed time exceeds 100 milliseconds
             MARK_AS_CLOSED(client);
             printf("Client %d has timed out. Timeout: %ld\n", client->client_fd, elapsed_time);
         }
@@ -142,18 +217,21 @@ void sigintHandler(int signal) {
 }
 
 int main() {
-    setLogLevel(LOG_DEBUG);
-    signal(SIGINT, sigintHandler);
-
     cfg = read_config_from_file("config.txt");
+    setLogLevel(cfg.log_level);
+    printf("Log Level: %d\n", cfg.log_level);
+    printf("Num Threads: %d\n", cfg.num_threads);
+    Init_logger();
+    signal(SIGINT, sigintHandler);
 
     init_task_queue(&task_queue, 50);
     initialize_thread_pool(&pool, cfg.num_threads, startWorkerThread, &task_queue);
 
     int server_socket_fd, client_socket_fd;
-    struct sockaddr_in server_addr, client_addr = {0};
+    struct sockaddr_in server_addr, client_addr = { 0 };
     socklen_t client_addr_len;
-    Client clients[MAX_CLIENTS];
+    Client* clients;
+    clients = (Client*)malloc(cfg.max_clients * sizeof(Client));
     int num_clients = 0;
 
     // Create server socket
@@ -187,10 +265,8 @@ int main() {
     printf("Server now listening on port: %d\n", 6969);
 
     // Initialize client structures
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        clients[i].client_fd = -1;
-        clients[i].persistent = TCP_STATELESS;
-        clients[i].status = IS_FREE;
+    for (int i = 0; i < cfg.max_clients; i++) {
+        init_client(&clients[i], cfg.connection_timeout, cfg.buffer_size);
     }
 
     // Set server socket to non-blocking
@@ -201,6 +277,7 @@ int main() {
     // THIS IS BAD BECAUSE NEW CONNECTIONS USE THE TOTAL CONNECTION COUNTER AS
     // AN INDEX INTO THE CLIENT ARRAY. IF THE 0TH CLIENT DC'S THEN INSTEAD OF A NEW CONNECTION
     // BEING PUT INTO INDEX 0 IT WILL GO INTO THE END OF THE ARRAY, OVERWRITING AN EXISTING CONNECTION
+    metrics_start();
     while (g_running) {
         // Accept new connections
         client_addr_len = sizeof(client_addr);
@@ -212,13 +289,13 @@ int main() {
         if (client_socket_fd != -1) {
             printf("Connection request from origin: %s\n", client_ip);
         }
-        
+
         if (client_socket_fd > 0) {
-            if (num_clients < MAX_CLIENTS) {
+            if (num_clients < cfg.max_clients) {
 
                 // Do a search for the first available index
                 int freeIndex = -1;
-                for (int i = 0; i < MAX_CLIENTS; i++) {
+                for (int i = 0; i < cfg.max_clients; i++) {
                     // Check both conditions for extra certainty
                     if (clients[i].status == IS_FREE && clients[i].client_fd == -1) {
                         freeIndex = i;
@@ -263,24 +340,29 @@ int main() {
         }
 
         // Check for idle persistent connections and close if necessary
+        metrics_report();
     }
 
     // Close server socket
     close(server_socket_fd);
-    logMessage(LOG_INFO, "Socket server has been closed");
+    logMessageThreadSafe(LOG_INFO, "Socket server has been closed");
 
     shutdown_task_queue(&task_queue);
 
-    for(int i = 0; i < pool.size; i++) {
-        logMessage(LOG_DEBUG, "Attempting to join thread: %d", i);
+    for (int i = 0; i < pool.size; i++) {
+        logMessageThreadSafe(LOG_DEBUG, "Awaiting thread: %d", i);
         pthread_t thread = pool.threads[i];
-        pthread_join(thread, NULL); 
-    }  
+        pthread_join(thread, NULL);
+    }
 
 
     release_thread_pool(&pool);
 
     release_task_queue(&task_queue);
+
+    for (int i = 0; i < cfg.max_clients; i++) {
+        release_client(&clients[i]);
+    }
 
     printf("Press any key to continue... ");
     getchar();

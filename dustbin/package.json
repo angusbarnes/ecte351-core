@@ -1,5 +1,8 @@
 {
   "dependencies": {
+    "address": "^2.0.2",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
     "sqlite3": "^5.1.7"
   }
 }

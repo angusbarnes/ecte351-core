@@ -5,6 +5,7 @@ typedef struct {
     int max_pending_queue_size;
     char ip_address[16];
     int num_threads;
+    int log_level;
 } Config;
 
 Config read_config_from_file(const char *filename);

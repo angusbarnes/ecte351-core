@@ -11,7 +11,8 @@ Config DEFAULT_SERVER_CONFIG = {
     .connection_timeout = 100, //Connection Timeout
     .max_pending_queue_size = 10, // Max pending connection
     .ip_address = "0.0.0.0", //Ip (DOES NOT GET USED)
-    .num_threads = 4 //Thread count
+    .num_threads = 4, //Thread count
+    .log_level = 2
 };
 
 Config read_config_from_file(const char *filename) {
@@ -41,10 +42,15 @@ Config read_config_from_file(const char *filename) {
                 if (token != NULL) {
                     config.buffer_size = atoi(token);
                 }
+            } else if (strcmp(token, "LOG_LEVEL") == 0) {
+                token = strtok(NULL, "=");
+                if (token != NULL) {
+                    config.log_level = atoi(token);
+                }
             } else if (strcmp(token, "CONNECTION_TIMEOUT") == 0) {
                 token = strtok(NULL, "=");
                 if (token != NULL) {
-                    config.connection_timeout = atoi(token);
+                    config.connection_timeout = atoi(token); // TODO: support reading as a long
                 }
             } else if (strcmp(token, "MAX_PENDING_QUEUE_SIZE") == 0) {
                 token = strtok(NULL, "=");

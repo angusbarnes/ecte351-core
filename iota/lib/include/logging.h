@@ -11,3 +11,5 @@ typedef enum {
 
 void setLogLevel(LogLevel level);
 void logMessage(LogLevel level, const char *format, ...);
+void logMessageThreadSafe(LogLevel level, const char *format, ...);
+void Init_logger();
